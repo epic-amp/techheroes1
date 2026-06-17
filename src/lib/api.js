@@ -1,3 +1,5 @@
+import { upload } from "@vercel/blob/client";
+
 /**
  * TechHeroes API client.
  * Talks to the serverless API on the same origin (/api). Stores the JWT in
@@ -56,6 +58,16 @@ export const api = {
   },
   me: () => request("/auth/me"),
   updateProfile: (b) => request("/auth/me", { method: "PUT", body: b }),
+
+  // Upload a real file straight to Vercel Blob (browser -> Blob), returns its URL.
+  uploadFile: async (file) => {
+    const blob = await upload(file.name, file, {
+      access: "public",
+      handleUploadUrl: `${BASE}/upload`,
+      clientPayload: JSON.stringify({ token: getToken() }),
+    });
+    return blob.url;
+  },
 
   students: {
     list: (params = {}) => request(`/students${qs(params)}`),
