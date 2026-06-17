@@ -597,6 +597,40 @@ function AssignmentsSection({ t, assignments, groups, reload }) {
 }
 
 /* ============================== Tutor: Materials ============================== */
+/* ============================== File upload (Vercel Blob) ============================== */
+function typeFromName(name, fallback) {
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const map = { pdf: "PDF", docx: "DOCX", pptx: "PPTX", xlsx: "XLSX", zip: "Zip", jpg: "Image", jpeg: "Image", png: "Image", mp4: "Video" };
+  return map[ext] || fallback || "PDF";
+}
+function FileUpload({ t, onUploaded }) {
+  const [state, setState] = useState("idle"); // idle | uploading | done | error
+  const [fileName, setFileName] = useState("");
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+
+  const pick = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileName(file.name); setErr(""); setState("uploading");
+    try {
+      const url = await api.uploadFile(file);
+      setState("done"); onUploaded(url, file);
+    } catch (er) { setState("error"); setErr(er.message); }
+  };
+
+  return (
+    <div className="th-dropzone" style={{ cursor: "pointer" }} onClick={() => inputRef.current && inputRef.current.click()}>
+      <input ref={inputRef} type="file" hidden onChange={pick}
+        accept=".pdf,.docx,.pptx,.xlsx,.zip,.jpg,.jpeg,.png" />
+      {state === "idle" && <><Upload size={20} /><span>{t.dropHint}</span></>}
+      {state === "uploading" && <><Loader2 className="th-spin" size={20} /><span>{t.uploading} {fileName}</span></>}
+      {state === "done" && <><CheckCircle2 size={20} color="var(--ok)" /><span>{fileName}</span></>}
+      {state === "error" && <><AlertTriangle size={20} color="var(--warn)" /><span>{err}</span></>}
+    </div>
+  );
+}
+
 function MaterialsSection({ t, materials, groups, reload }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", type: "PDF", groupId: "", fileUrl: "" });
@@ -655,9 +689,12 @@ function MaterialsSection({ t, materials, groups, reload }) {
               {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </Field>
-          <Field label={t.fileLink}><input className="th-input th-col-2" value={form.fileUrl} onChange={(e) => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" /></Field>
         </div>
-        <p className="th-fineprint">{t.blobNote}</p>
+        <div style={{ marginTop: 13 }}>
+          <span className="th-field__label">{t.file}</span>
+          <FileUpload t={t} onUploaded={(url, file) => setForm((f) => ({ ...f, fileUrl: url, type: typeFromName(file.name, f.type) }))} />
+        </div>
+        <p className="th-fineprint">{t.uploadNote}</p>
         <ErrorNote>{err}</ErrorNote>
       </Modal>
     </>
@@ -694,8 +731,11 @@ function GradesSection({ t, submissions, assignments, reload }) {
                     <td>{aTitle(s.assignment_id)}</td>
                     <td><Badge kind={statusKind(s.grade != null ? "graded" : s.status)}>{s.grade != null ? t.graded : t[s.status]}</Badge></td>
                     <td>{s.grade != null ? <span className="th-gradechip"><strong>{Number(s.grade)}</strong>{s.letter && <i>{s.letter}</i>}</span> : <span className="th-muted">—</span>}</td>
-                    <td className="th-ta-end"><button className="th-btn th-btn--sm" onClick={() => setEdit({ id: s.id, grade: s.grade ?? "", letter: s.letter || "", feedback: s.feedback || "", student: s.student_name })}>
-                      <Pencil size={14} />{s.grade != null ? t.regrade : t.giveGrade}</button></td>
+                    <td className="th-ta-end"><div className="th-rowactions">
+                      {s.file_url && <a className="th-iconbtn" href={s.file_url} target="_blank" rel="noreferrer" title={t.download}><Download size={15} /></a>}
+                      <button className="th-btn th-btn--sm" onClick={() => setEdit({ id: s.id, grade: s.grade ?? "", letter: s.letter || "", feedback: s.feedback || "", student: s.student_name })}>
+                        <Pencil size={14} />{s.grade != null ? t.regrade : t.giveGrade}</button>
+                    </div></td>
                   </tr>
                 ))}
               </tbody>
@@ -1024,9 +1064,12 @@ function StudentAssignments({ t, assignments, loading, reload }) {
       <Modal open={!!submit} onClose={() => setSubmit(null)} title={`${t.submit} — ${submit?.title || ""}`}
         footer={<><button className="th-btn" onClick={() => setSubmit(null)}>{t.cancel}</button>
           <button className="th-btn th-btn--primary" onClick={doSubmit} disabled={busy}>{busy ? <Loader2 className="th-spin" size={16} /> : t.submit}</button></>}>
-        <Field label={t.fileLink}><input className="th-input" value={form.fileUrl} onChange={(e) => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://… (link to your work)" /></Field>
+        <div style={{ marginBottom: 13 }}>
+          <span className="th-field__label">{t.file}</span>
+          <FileUpload t={t} onUploaded={(url) => setForm((f) => ({ ...f, fileUrl: url }))} />
+        </div>
         <Field label={t.comment}><textarea className="th-input th-textarea" rows={3} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} /></Field>
-        <p className="th-fineprint">{t.blobNote}</p>
+        <p className="th-fineprint">{t.uploadNote}</p>
         <ErrorNote>{err}</ErrorNote>
       </Modal>
     </>
@@ -1193,6 +1236,7 @@ export default function App() {
 const T = {
   en: {
     saveChanges: "Save changes", newPassword: "New password", leaveBlankPw: "Leave blank to keep current", profileUpdated: "Profile updated.",
+    file: "File", dropHint: "Click to choose a file — PDF, DOCX, PPTX, XLSX, ZIP, JPG, PNG", uploading: "Uploading", uploadNote: "Files upload to Vercel Blob. Enable it once: Vercel project → Storage → Create → Blob.",
     setupTitle: "Set up TechHeroes", setupSub: "Create the administrator account to begin. You'll manage students, groups, materials, and grades from here.",
     createAdmin: "Create administrator", createAccount: "Create account", min8: "At least 8 characters",
     setupOnce: "This screen appears only once, on first launch.", connError: "Couldn't reach the server. Check your connection and try again.",
@@ -1265,6 +1309,7 @@ const T = {
   },
   ar: {
     saveChanges: "حفظ التغييرات", newPassword: "كلمة مرور جديدة", leaveBlankPw: "اتركها فارغة للإبقاء على الحالية", profileUpdated: "تم تحديث الملف الشخصي.",
+    file: "الملف", dropHint: "اضغط لاختيار ملف — PDF, DOCX, PPTX, XLSX, ZIP, JPG, PNG", uploading: "جارٍ الرفع", uploadNote: "تُرفع الملفات إلى Vercel Blob. فعّله مرة واحدة: مشروع Vercel ← Storage ← Create ← Blob.",
     setupTitle: "إعداد TechHeroes", setupSub: "أنشئ حساب المشرف للبدء. ستدير الطلاب والمجموعات والمواد والدرجات من هنا.",
     createAdmin: "إنشاء حساب المشرف", createAccount: "إنشاء الحساب", min8: "٨ أحرف على الأقل",
     setupOnce: "تظهر هذه الشاشة مرة واحدة فقط عند أول تشغيل.", connError: "تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مجددًا.",
